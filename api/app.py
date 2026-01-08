@@ -87,7 +87,7 @@ def model_info():
     return jsonify({
         "model_type": MODEL_TYPE,
         "n_features": len(FEATURES),
-        "feature_names": FEATURES,          # tu peux enlever si tu veux plus léger
+        "feature_names": FEATURES,
         "uses_scaler": USES_SCALER,
         "threshold_default": DEFAULT_THRESHOLD
     })
