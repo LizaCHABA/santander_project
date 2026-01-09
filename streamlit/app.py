@@ -107,7 +107,7 @@ section[data-testid="stSidebar"] {{
 """, unsafe_allow_html=True)
 
 # ==================== API CONFIG ====================
-API_URL = "http://127.0.0.1:5000"
+API_URL = "http://localhost:5000"
 
 # ==================== SESSION STATE ====================
 if "etape" not in st.session_state:
