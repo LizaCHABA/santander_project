@@ -34,7 +34,7 @@ DEFAULT_TAUX_ANNUEL = 0.035  # 3.5%
 # App init + load artifacts once
 # -----------------------------
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
  
 try:
     model = joblib.load(MODEL_PATH)
