@@ -107,7 +107,7 @@ section[data-testid="stSidebar"] {{
 """, unsafe_allow_html=True)
 
 # ==================== API CONFIG ====================
-API_URL = "https://santander-project-3.onrender.com"
+API_URL = "https://santander-project-api.onrender.com"
 
 # ==================== SESSION STATE ====================
 if "etape" not in st.session_state:
