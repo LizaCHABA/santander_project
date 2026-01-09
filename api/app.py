@@ -426,4 +426,4 @@ if __name__ == "__main__":
     print("✅ API file:", __file__)
     print("✅ Model path:", MODEL_PATH)
     print("✅ Scaler path:", SCALER_PATH)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    #app.run(host="0.0.0.0", port=5000, debug=True)
