@@ -37,7 +37,14 @@ DEFAULT_TAUX_ANNUEL = 0.035  # 3.5%
 app = Flask(__name__)
 
 # Autoriser toutes les origines (pour tester)
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    methods=["GET", "POST", "OPTIONS"]
+)
+
 
  
 try:
