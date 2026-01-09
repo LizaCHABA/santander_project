@@ -1,392 +1,525 @@
 # frontend/streamlit_app.py
+
 import streamlit as st
-import math
 import requests
 import pandas as pd
+import plotly.graph_objects as go
+from typing import Dict, Any
+import json
 
-# =========================
-# CONFIG
-# =========================
-APP_TITLE = "Simulation d’éligibilité au crédit"
-APP_SUBTITLE = "Formulaire multi-étapes • Résultat immédiat"
-
-PREDICT_URL = "http://localhost:5000/predict"
-
-FEATURES = [f"var_{i}" for i in range(200)]
-
-st.set_page_config(page_title=APP_TITLE, page_icon="💳", layout="wide")
-
-# =========================
-# STYLE (simple + propre)
-# =========================
-st.markdown(
-    """
-    <style>
-    .block-container {padding-top: 2rem; padding-bottom: 2rem;}
-    .card {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 18px;
-        padding: 18px 18px;
-    }
-    .muted {opacity: .75;}
-    .step-pill {
-        display:inline-block;
-        padding: 8px 12px;
-        border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.10);
-        background: rgba(255,255,255,0.03);
-        margin-right: 8px;
-        font-size: 14px;
-    }
-    .step-active {
-        border-color: rgba(255, 99, 99, 0.60);
-        box-shadow: 0 0 0 2px rgba(255,99,99,0.15) inset;
-    }
-    .big-title {font-size: 28px; font-weight: 750; margin: 0;}
-    .sub-title {margin-top: 6px; opacity: .75;}
-    </style>
-    """,
-    unsafe_allow_html=True
+# Configuration de la page
+st.set_page_config(
+    page_title="Santander - Simulation de Crédit",
+    page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# =========================
-# STATE INIT
-# =========================
-def init_state():
-    defaults = {
-        "step": 0,
-
-        # Personnel
-        "full_name": "Jean Dupont",
-        "age": 30,
-        "city": "Paris",
-        "housing_status": "Locataire",
-        "years_at_address": 2,
-
-        # Professionnel
-        "employment_status": "CDI",
-        "sector": "",
-        "job_seniority": 3,
-
-        # Financier
-        "monthly_income": 2000,
-        "monthly_charges": 600,
-        "existing_loans": 0,
-        "loan_amount": 5000,
-        "loan_duration_months": 12,
-
-        # UI
-        "threshold": 0.50,
-        "result": None,
+# CSS personnalisé
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 3rem;
+        color: #EC0000;
+        text-align: center;
+        margin-bottom: 2rem;
+        font-weight: bold;
     }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+    .step-header {
+        font-size: 1.8rem;
+        color: #EC0000;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        border-bottom: 3px solid #EC0000;
+        padding-bottom: 0.5rem;
+    }
+    .info-box {
+        background-color: #f0f2f6;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border-left: 5px solid #EC0000;
+        margin: 1rem 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 1.2rem;
+        border: 2px solid #28a745;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        color: #856404;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 1.2rem;
+        border: 2px solid #ffc107;
+    }
+    .danger-box {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 1.2rem;
+        border: 2px solid #dc3545;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-init_state()
+# Configuration API
+API_URL = "http://localhost:5000"
 
-# =========================
-# HELPERS
-# =========================
-def set_step(i: int):
-    st.session_state.step = int(i)
+# Initialisation de session_state
+if 'etape' not in st.session_state:
+    st.session_state.etape = 1
+if 'donnees' not in st.session_state:
+    st.session_state.donnees = {}
 
-def step_header():
-    steps = ["Personnel", "Professionnel", "Financier", "Révision"]
-    cols = st.columns([1, 1, 1, 1])
-    for i, name in enumerate(steps):
-        active = "step-pill step-active" if st.session_state.step == i else "step-pill"
-        with cols[i]:
-            if st.button(name, use_container_width=True, key=f"nav_{i}"):
-                set_step(i)
-    st.markdown("---")
-
-def business_rules_decision():
+def generer_features_aleatoires() -> Dict[str, float]:
     """
-    Règles simples 'crédit' pour éviter les cas incohérents.
-    Retourne (eligible, message_court)
+    Génère 200 features aléatoires pour la prédiction.
+    En production, ces valeurs seraient calculées à partir des données du formulaire.
     """
-    income = float(st.session_state.monthly_income)
-    charges = float(st.session_state.monthly_charges)
-    amount = float(st.session_state.loan_amount)
-    months = float(st.session_state.loan_duration_months)
+    import numpy as np
+    features = {}
+    for i in range(200):
+        # Génération de valeurs réalistes basées sur les statistiques du dataset
+        if i < 50:
+            features[f"var_{i}"] = np.random.normal(10, 3)
+        elif i < 100:
+            features[f"var_{i}"] = np.random.normal(5, 2)
+        elif i < 150:
+            features[f"var_{i}"] = np.random.normal(15, 4)
+        else:
+            features[f"var_{i}"] = np.random.normal(8, 2.5)
+    return features
 
-    if income <= 0:
-        return False, "Revenu mensuel manquant."
-
-    if months <= 0:
-        return False, "Durée invalide."
-
-    # mensualité estimée (sans intérêts)
-    monthly_payment = amount / months
-    debt_ratio = (charges + monthly_payment) / income
-
-    if debt_ratio > 0.45:
-        return False, "Capacité de remboursement insuffisante."
-
-    # Exemple : sans emploi + revenu faible
-    if st.session_state.employment_status == "Sans emploi" and income < 1200:
-        return False, "Situation trop instable pour cette simulation."
-
-    return True, "Profil cohérent pour une analyse."
-
-def build_payload_from_form():
+def appeler_api_prediction(features: Dict[str, float], threshold: float = 0.5) -> Dict[str, Any]:
     """
-    On doit envoyer var_0..var_199.
-    Comme le dataset Santander est anonymisé, on simule un mapping.
+    Appelle l'API de prédiction
     """
-    payload = {f: 0.0 for f in FEATURES}
+    try:
+        response = requests.post(
+            f"{API_URL}/predict",
+            json={"features": features, "threshold": threshold},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return {"success": True, "data": response.json()}
+        else:
+            return {"success": False, "error": f"Erreur API: {response.status_code}"}
+    except requests.exceptions.ConnectionError:
+        return {"success": False, "error": "Impossible de se connecter à l'API. Vérifiez qu'elle est démarrée."}
+    except Exception as e:
+        return {"success": False, "error": f"Erreur: {str(e)}"}
 
-    payload["var_0"] = float(st.session_state.age)
-    payload["var_1"] = float(st.session_state.years_at_address)
-    payload["var_2"] = float(st.session_state.job_seniority)
-    payload["var_3"] = float(st.session_state.monthly_income)
-    payload["var_4"] = float(st.session_state.monthly_charges)
-    payload["var_5"] = float(st.session_state.existing_loans)
-    payload["var_6"] = float(st.session_state.loan_amount)
-    payload["var_7"] = float(st.session_state.loan_duration_months)
+def calculer_score_risque(donnees: Dict) -> float:
+    """
+    Calcule un score de risque basé sur les données du formulaire
+    (Ceci est une simplification - en production, le ML fait ce calcul)
+    """
+    score = 0.5  # Score de base
+    
+    # Facteurs positifs
+    if donnees.get('statut_pro') == 'CDI':
+        score += 0.15
+    if donnees.get('anciennete_pro', 0) > 24:
+        score += 0.1
+    if donnees.get('annees_residence', 0) > 3:
+        score += 0.05
+    
+    # Facteurs négatifs
+    taux_endettement = donnees.get('credits_encours', 0) / max(donnees.get('revenu_mensuel', 1), 1)
+    if taux_endettement > 0.33:
+        score -= 0.2
+    if donnees.get('charges_mensuelles', 0) / max(donnees.get('revenu_mensuel', 1), 1) > 0.5:
+        score -= 0.15
+    
+    return max(0.0, min(1.0, score))
 
-    status_map = {"CDI": 3, "CDD": 2, "Freelance": 2, "Étudiant": 1, "Sans emploi": 0}
-    payload["var_8"] = float(status_map.get(st.session_state.employment_status, 0))
+# ==================== INTERFACE PRINCIPALE ====================
 
-    return payload
+st.markdown('<h1 class="main-header">🏦 Santander - Simulation de Crédit</h1>', unsafe_allow_html=True)
 
-def call_prediction(payload: dict):
-    r = requests.post(PREDICT_URL, json=payload, timeout=10)
-    r.raise_for_status()
-    return r.json()
+# Barre de progression
+progress = (st.session_state.etape - 1) / 4
+st.progress(progress)
+st.markdown(f"**Étape {st.session_state.etape} sur 5**")
 
-# =========================
-# SIDEBAR (config)
-# =========================
+# Sidebar - Navigation
 with st.sidebar:
-    st.markdown("## Configuration")
-    st.session_state.threshold = st.slider(
-        "Seuil de décision",
-        min_value=0.10,
-        max_value=0.90,
-        value=float(st.session_state.threshold),
-        step=0.01,
-        key="threshold_slider"
-    )
-    st.caption("Plus le seuil est élevé, plus la décision devient stricte.")
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Santander_Logo.svg/1200px-Santander_Logo.svg.png", width=200)
+    st.markdown("### Navigation")
+    
+    etapes = {
+        1: "👤 Informations Personnelles",
+        2: "💼 Situation Professionnelle",
+        3: "💰 Situation Financière",
+        4: "📋 Détails du Crédit",
+        5: "🎯 Résultat"
+    }
+    
+    for num, titre in etapes.items():
+        if num == st.session_state.etape:
+            st.markdown(f"**➤ {titre}**")
+        elif num < st.session_state.etape:
+            st.markdown(f"✅ {titre}")
+        else:
+            st.markdown(f"⚪ {titre}")
+    
     st.markdown("---")
-    if st.button("Réinitialiser la simulation"):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
+    if st.button("🔄 Recommencer", use_container_width=True):
+        st.session_state.etape = 1
+        st.session_state.donnees = {}
         st.rerun()
 
-# =========================
-# HEADER
-# =========================
-st.markdown(f"<p class='big-title'>💳 {APP_TITLE}</p>", unsafe_allow_html=True)
-st.markdown(f"<div class='sub-title'>{APP_SUBTITLE}</div>", unsafe_allow_html=True)
-st.write("")
-step_header()
-
-# =========================
-# STEP 1 — PERSONNEL
-# =========================
-if st.session_state.step == 0:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Informations personnelles")
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.text_input("Nom complet", key="full_name")
-        st.number_input("Âge", min_value=18, max_value=99, step=1, key="age")
-        st.text_input("Ville", key="city")
-
-    with c2:
-        st.selectbox("Résidence", ["Locataire", "Propriétaire", "Hébergé"], key="housing_status")
-        st.number_input("Années à l’adresse actuelle", min_value=0, max_value=50, step=1, key="years_at_address")
-
-    st.write("")
-    colA, colB = st.columns([1, 1])
-    with colB:
-        if st.button("Suivant →", use_container_width=True):
-            set_step(1)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# =========================
-# STEP 2 — PROFESSIONNEL
-# =========================
-elif st.session_state.step == 1:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Situation professionnelle")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.selectbox("Statut", ["CDI", "CDD", "Freelance", "Étudiant", "Sans emploi"], key="employment_status")
-        st.number_input("Ancienneté (années)", min_value=0, max_value=50, step=1, key="job_seniority")
-
-    with c2:
-        st.text_input("Secteur (optionnel)", key="sector")
-
-    st.write("")
-    colA, colB = st.columns([1, 1])
-    with colA:
-        if st.button("← Retour", use_container_width=True):
-            set_step(0)
-    with colB:
-        if st.button("Suivant →", use_container_width=True):
-            set_step(2)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# =========================
-# STEP 3 — FINANCIER
-# =========================
-elif st.session_state.step == 2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Informations financières")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.number_input("Revenu mensuel net (€)", min_value=0, step=50, key="monthly_income")
-        st.number_input("Charges mensuelles (€)", min_value=0, step=50, key="monthly_charges")
-    with c2:
-        st.number_input("Crédits en cours (nombre)", min_value=0, step=1, key="existing_loans")
-        st.number_input("Montant demandé (€)", min_value=0, step=100, key="loan_amount")
-    with c3:
-        st.number_input("Durée (mois)", min_value=1, step=1, key="loan_duration_months")
-
-    st.write("")
-    colA, colB = st.columns([1, 1])
-    with colA:
-        if st.button("← Retour", use_container_width=True):
-            set_step(1)
-    with colB:
-        if st.button("Suivant →", use_container_width=True):
-            set_step(3)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# =========================
-# STEP 4 — REVIEW & RESULT
-# =========================
-else:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Révision")
-
-    left, right = st.columns([1.1, 1])
-
-    with left:
-        st.markdown("**Personnel**")
-        st.write(f"• Nom : {st.session_state.full_name}")
-        st.write(f"• Âge : {st.session_state.age} ans")
-        st.write(f"• Ville : {st.session_state.city}")
-        st.write(f"• Résidence : {st.session_state.housing_status} — {st.session_state.years_at_address} an(s)")
-
-        st.write("")
-        st.markdown("**Professionnel**")
-        st.write(f"• Statut : {st.session_state.employment_status}")
-        st.write(f"• Ancienneté : {st.session_state.job_seniority} an(s)")
-        if st.session_state.sector.strip():
-            st.write(f"• Secteur : {st.session_state.sector}")
-
-    with right:
-        st.markdown("**Financier**")
-        st.write(f"• Revenus : {st.session_state.monthly_income} €")
-        st.write(f"• Charges : {st.session_state.monthly_charges} €")
-        st.write(f"• Crédits en cours : {st.session_state.existing_loans}")
-        st.write(f"• Demande : {st.session_state.loan_amount} € sur {st.session_state.loan_duration_months} mois")
-
-        st.write("")
-        st.markdown("### Résultat")
-
-        if st.button("✅ Calculer mon éligibilité", use_container_width=True):
-            # 1) Décision "banque" (ne pas afficher 'ok', juste le verdict)
-            eligible_rules, msg = business_rules_decision()
-            if not eligible_rules:
-                st.session_state.result = {
-                    "decision": 0,
-                    "proba_target_1": None,
-                    "message": msg
-                }
-            else:
-                # 2) Appel modèle (en arrière-plan, message user-friendly)
-                payload = build_payload_from_form()
-                try:
-                    res = call_prediction(payload)
-                    proba = float(res.get("proba_target_1", 0.0))
-                    threshold = float(st.session_state.threshold)
-                    decision = 1 if proba >= threshold else 0
-                    st.session_state.result = {
-                        "decision": decision,
-                        "proba_target_1": proba,
-                        "message": None
-                    }
-                except Exception:
-                    st.session_state.result = {
-                        "decision": 0,
-                        "proba_target_1": None,
-                        "message": "Service indisponible. Réessayez."
-                    }
-
-        # Affichage résultat utilisateur final
-        if st.session_state.result:
-            decision = st.session_state.result["decision"]
-            proba = st.session_state.result["proba_target_1"]
-            msg = st.session_state.result["message"]
-
-            if decision == 1:
-                st.success("✅ Éligible")
-                if proba is not None:
-                    st.caption(f"Score de la simulation : {proba:.3f}")
-            else:
-                st.error("❌ Non éligible")
-                if msg:
-                    st.caption(msg)
-                elif proba is not None:
-                    st.caption(f"Score de la simulation : {proba:.3f}")
-
-    st.write("")
-    colA, colB = st.columns([1, 1])
-    with colA:
-        if st.button("← Retour", use_container_width=True):
-            set_step(2)
-    with colB:
-        if st.button("Nouvelle simulation", use_container_width=True):
-            st.session_state.result = None
-            set_step(0)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.write("")
-    st.markdown("<div class='muted'>Note : le modèle s’appuie sur des variables anonymisées (var_0…var_199). "
-                "Cette interface réalise une simulation en mappant quelques champs vers ces variables.</div>",
-                unsafe_allow_html=True)
-
-# =========================
-# (OPTION) Upload CSV (1 ligne var_0..var_199)
-# Tu peux le mettre où tu veux si tu en as besoin.
-# =========================
-with st.expander("Importer un fichier (optionnel)", expanded=False):
-    st.caption("Vous pouvez importer un fichier contenant une seule ligne avec les colonnes var_0..var_199.")
-    file = st.file_uploader("Importer un CSV", type=["csv"])
-    if file is not None:
-        df_up = pd.read_csv(file)
-        missing_cols = [c for c in FEATURES if c not in df_up.columns]
-        if missing_cols:
-            st.error(f"Colonnes manquantes : {missing_cols[:10]} ... ({len(missing_cols)} au total)")
+# ==================== ÉTAPE 1 : INFORMATIONS PERSONNELLES ====================
+if st.session_state.etape == 1:
+    st.markdown('<h2 class="step-header">👤 Informations Personnelles</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        nom = st.text_input("Nom *", value=st.session_state.donnees.get('nom', ''), placeholder="Dupont")
+        prenom = st.text_input("Prénom *", value=st.session_state.donnees.get('prenom', ''), placeholder="Jean")
+        age = st.number_input("Âge *", min_value=18, max_value=100, value=st.session_state.donnees.get('age', 30))
+    
+    with col2:
+        residence = st.selectbox(
+            "Type de résidence *",
+            ["Propriétaire", "Locataire", "Hébergé gratuitement", "Autre"],
+            index=["Propriétaire", "Locataire", "Hébergé gratuitement", "Autre"].index(
+                st.session_state.donnees.get('residence', 'Locataire')
+            )
+        )
+        annees_residence = st.number_input(
+            "Années à l'adresse actuelle *",
+            min_value=0,
+            max_value=50,
+            value=st.session_state.donnees.get('annees_residence', 2)
+        )
+    
+    st.markdown('<div class="info-box">ℹ️ <b>Informations importantes :</b><br>• Tous les champs marqués d\'un * sont obligatoires<br>• Vos données sont sécurisées et confidentielles<br>• La simulation est gratuite et sans engagement</div>', unsafe_allow_html=True)
+    
+    if st.button("Suivant ➡️", type="primary", use_container_width=True):
+        if nom and prenom:
+            st.session_state.donnees.update({
+                'nom': nom,
+                'prenom': prenom,
+                'age': age,
+                'residence': residence,
+                'annees_residence': annees_residence
+            })
+            st.session_state.etape = 2
+            st.rerun()
         else:
-            st.success("Fichier valide.")
-            row0 = df_up.iloc[0]
-            st.write("Aperçu (premières variables) :", row0[FEATURES[:10]].to_dict())
-            if st.button("Utiliser cette ligne pour calculer"):
-                payload = {f: float(row0[f]) for f in FEATURES}
-                try:
-                    res = call_prediction(payload)
-                    proba = float(res.get("proba_target_1", 0.0))
-                    decision = 1 if proba >= float(st.session_state.threshold) else 0
-                    st.session_state.result = {
-                        "decision": decision,
-                        "proba_target_1": proba,
-                        "message": None
-                    }
-                    st.success("Calcul terminé. Allez à l’étape Révision.")
-                except Exception as e:
-                    st.error(f"Erreur de calcul : {e}")
+            st.error("❌ Veuillez remplir tous les champs obligatoires")
+
+# ==================== ÉTAPE 2 : SITUATION PROFESSIONNELLE ====================
+elif st.session_state.etape == 2:
+    st.markdown('<h2 class="step-header">💼 Situation Professionnelle</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        statut_pro = st.selectbox(
+            "Statut professionnel *",
+            ["CDI", "CDD", "Intérimaire", "Indépendant", "Fonctionnaire", "Retraité", "Sans emploi", "Étudiant"],
+            index=["CDI", "CDD", "Intérimaire", "Indépendant", "Fonctionnaire", "Retraité", "Sans emploi", "Étudiant"].index(
+                st.session_state.donnees.get('statut_pro', 'CDI')
+            )
+        )
+        
+        secteur = st.selectbox(
+            "Secteur d'activité *",
+            ["Agriculture", "Commerce", "Construction", "Éducation", "Finance", "Industrie", 
+             "Santé", "Services", "Technologies", "Transport", "Autre"],
+            index=["Agriculture", "Commerce", "Construction", "Éducation", "Finance", "Industrie", 
+                   "Santé", "Services", "Technologies", "Transport", "Autre"].index(
+                st.session_state.donnees.get('secteur', 'Services')
+            )
+        )
+    
+    with col2:
+        anciennete_pro = st.number_input(
+            "Ancienneté professionnelle (en mois) *",
+            min_value=0,
+            max_value=600,
+            value=st.session_state.donnees.get('anciennete_pro', 24),
+            help="Nombre de mois dans votre emploi actuel"
+        )
+        
+        st.markdown("### 📊 Indicateur de stabilité")
+        if statut_pro == "CDI" and anciennete_pro >= 12:
+            st.success("✅ Très bonne stabilité professionnelle")
+        elif statut_pro in ["CDI", "Fonctionnaire"] and anciennete_pro >= 6:
+            st.info("ℹ️ Bonne stabilité professionnelle")
+        else:
+            st.warning("⚠️ Stabilité professionnelle à renforcer")
+    
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("⬅️ Précédent", use_container_width=True):
+            st.session_state.etape = 1
+            st.rerun()
+    
+    with col_btn2:
+        if st.button("Suivant ➡️", type="primary", use_container_width=True):
+            st.session_state.donnees.update({
+                'statut_pro': statut_pro,
+                'secteur': secteur,
+                'anciennete_pro': anciennete_pro
+            })
+            st.session_state.etape = 3
+            st.rerun()
+
+# ==================== ÉTAPE 3 : SITUATION FINANCIÈRE ====================
+elif st.session_state.etape == 3:
+    st.markdown('<h2 class="step-header">💰 Situation Financière</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        revenu_mensuel = st.number_input(
+            "Revenu mensuel net (€) *",
+            min_value=0,
+            max_value=50000,
+            value=st.session_state.donnees.get('revenu_mensuel', 2000),
+            step=100
+        )
+        
+        credits_encours = st.number_input(
+            "Crédits en cours (€) *",
+            min_value=0,
+            max_value=500000,
+            value=st.session_state.donnees.get('credits_encours', 0),
+            step=100,
+            help="Montant total des mensualités de vos crédits actuels"
+        )
+    
+    with col2:
+        charges_mensuelles = st.number_input(
+            "Charges mensuelles (€) *",
+            min_value=0,
+            max_value=10000,
+            value=st.session_state.donnees.get('charges_mensuelles', 800),
+            step=50,
+            help="Loyer, assurances, abonnements, etc."
+        )
+    
+    # Calcul du taux d'endettement
+    st.markdown("---")
+    st.markdown("### 📊 Analyse de votre capacité d'emprunt")
+    
+    col_metric1, col_metric2, col_metric3 = st.columns(3)
+    
+    reste_a_vivre = revenu_mensuel - credits_encours - charges_mensuelles
+    taux_endettement = (credits_encours / revenu_mensuel * 100) if revenu_mensuel > 0 else 0
+    
+    with col_metric1:
+        st.metric("💵 Reste à vivre", f"{reste_a_vivre:.0f} €")
+    
+    with col_metric2:
+        st.metric("📈 Taux d'endettement", f"{taux_endettement:.1f} %")
+    
+    with col_metric3:
+        capacite = revenu_mensuel * 0.33 - credits_encours
+        st.metric("💪 Capacité d'emprunt", f"{max(0, capacite):.0f} €/mois")
+    
+    # Indicateurs visuels
+    if taux_endettement < 33:
+        st.success("✅ Votre taux d'endettement est excellent (< 33%)")
+    elif taux_endettement < 40:
+        st.warning("⚠️ Votre taux d'endettement est élevé (33-40%)")
+    else:
+        st.error("❌ Votre taux d'endettement est trop élevé (> 40%)")
+    
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("⬅️ Précédent", use_container_width=True):
+            st.session_state.etape = 2
+            st.rerun()
+    
+    with col_btn2:
+        if st.button("Suivant ➡️", type="primary", use_container_width=True):
+            st.session_state.donnees.update({
+                'revenu_mensuel': revenu_mensuel,
+                'credits_encours': credits_encours,
+                'charges_mensuelles': charges_mensuelles
+            })
+            st.session_state.etape = 4
+            st.rerun()
+
+# ==================== ÉTAPE 4 : DÉTAILS DU CRÉDIT ====================
+elif st.session_state.etape == 4:
+    st.markdown('<h2 class="step-header">📋 Détails du Crédit Demandé</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        montant_credit = st.number_input(
+            "Montant du crédit demandé (€) *",
+            min_value=1000,
+            max_value=500000,
+            value=st.session_state.donnees.get('montant_credit', 10000),
+            step=1000
+        )
+        
+        duree_credit = st.selectbox(
+            "Durée du crédit (mois) *",
+            [12, 24, 36, 48, 60, 72, 84, 96, 120, 180, 240, 300],
+            index=[12, 24, 36, 48, 60, 72, 84, 96, 120, 180, 240, 300].index(
+                st.session_state.donnees.get('duree_credit', 60)
+            )
+        )
+    
+    with col2:
+        objet_credit = st.selectbox(
+            "Objet du crédit *",
+            ["Achat immobilier", "Travaux", "Véhicule", "Consommation", "Trésorerie", "Autre"],
+            index=["Achat immobilier", "Travaux", "Véhicule", "Consommation", "Trésorerie", "Autre"].index(
+                st.session_state.donnees.get('objet_credit', 'Consommation')
+            )
+        )
+    
+    # Simulation de mensualité (taux fictif pour démo)
+    st.markdown("---")
+    st.markdown("### 💳 Simulation de la mensualité")
+    
+    taux_annuel = 0.035  # 3.5% (exemple)
+    taux_mensuel = taux_annuel / 12
+    n_mois = duree_credit
+    
+    if taux_mensuel > 0:
+        mensualite = montant_credit * (taux_mensuel * (1 + taux_mensuel)**n_mois) / ((1 + taux_mensuel)**n_mois - 1)
+    else:
+        mensualite = montant_credit / n_mois
+    
+    cout_total = mensualite * n_mois
+    cout_credit = cout_total - montant_credit
+    
+    col_sim1, col_sim2, col_sim3 = st.columns(3)
+    
+    with col_sim1:
+        st.metric("💰 Mensualité estimée", f"{mensualite:.2f} €")
+    
+    with col_sim2:
+        st.metric("💸 Coût total du crédit", f"{cout_credit:.2f} €")
+    
+    with col_sim3:
+        st.metric("📊 Total à rembourser", f"{cout_total:.2f} €")
+    
+    # Vérification de la capacité
+    revenu = st.session_state.donnees.get('revenu_mensuel', 0)
+    credits_actuels = st.session_state.donnees.get('credits_encours', 0)
+    
+    nouveau_taux = ((credits_actuels + mensualite) / revenu * 100) if revenu > 0 else 100
+    
+    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+    st.markdown(f"**📊 Votre nouveau taux d'endettement serait de {nouveau_taux:.1f}%**")
+    if nouveau_taux < 33:
+        st.markdown("✅ Ce crédit est compatible avec votre situation financière")
+    elif nouveau_taux < 40:
+        st.markdown("⚠️ Ce crédit représente un endettement important")
+    else:
+        st.markdown("❌ Ce crédit risque de dépasser votre capacité de remboursement")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("⬅️ Précédent", use_container_width=True):
+            st.session_state.etape = 3
+            st.rerun()
+    
+    with col_btn2:
+        if st.button("🎯 Lancer la Simulation", type="primary", use_container_width=True):
+            st.session_state.donnees.update({
+                'montant_credit': montant_credit,
+                'duree_credit': duree_credit,
+                'objet_credit': objet_credit,
+                'mensualite_estimee': mensualite
+            })
+            st.session_state.etape = 5
+            st.rerun()
+# ==================== ÉTAPE 5 : RÉSULTAT ====================
+elif st.session_state.etape == 5:
+    st.markdown('<h2 class="step-header">🎯 Résultat de votre Simulation</h2>', unsafe_allow_html=True)
+
+    d = st.session_state.donnees
+
+    # ================= RÈGLES MÉTIER (DÉCISION RÉELLE) =================
+    revenu = d.get("revenu_mensuel", 0)
+    charges = d.get("charges_mensuelles", 0)
+    credits = d.get("credits_encours", 0)
+    mensualite = d.get("mensualite_estimee", 0)
+    statut = d.get("statut_pro", "")
+
+    decision = 1
+    raisons = []
+
+    if revenu <= 0:
+        decision = 0
+        raisons.append("Revenu invalide")
+
+    taux_endettement = (charges + credits + mensualite) / revenu if revenu > 0 else 1
+
+    if taux_endettement > 0.45:
+        decision = 0
+        raisons.append("Taux d’endettement trop élevé (> 45%)")
+
+    if statut == "Sans emploi":
+        decision = 0
+        raisons.append("Situation professionnelle instable")
+
+    # ================= AFFICHAGE =================
+    st.markdown("---")
+
+    if decision == 1:
+        st.markdown("""
+        <div class="success-box">
+        ✅ <b>DEMANDE ÉLIGIBLE</b><br><br>
+        Votre situation est compatible avec l’octroi du crédit.
+        </div>
+        """, unsafe_allow_html=True)
+        st.balloons()
+    else:
+        st.markdown("""
+        <div class="danger-box">
+        ❌ <b>DEMANDE NON ÉLIGIBLE</b><br><br>
+        {}
+        </div>
+        """.format("<br>".join(f"• {r}" for r in raisons)), unsafe_allow_html=True)
+
+    # ================= RÉCAP =================
+    st.markdown("### 📋 Récapitulatif")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**👤 Personnel**")
+        st.write(f"Nom : {d.get('nom')} {d.get('prenom')}")
+        st.write(f"Âge : {d.get('age')} ans")
+        st.write(f"Résidence : {d.get('residence')}")
+
+        st.markdown("**💼 Professionnel**")
+        st.write(f"Statut : {d.get('statut_pro')}")
+        st.write(f"Secteur : {d.get('secteur')}")
+        st.write(f"Ancienneté : {d.get('anciennete_pro')} mois")
+
+    with col2:
+        st.markdown("**💰 Financier**")
+        st.write(f"Revenu : {revenu} €")
+        st.write(f"Charges : {charges} €")
+        st.write(f"Crédits : {credits} €")
+        st.write(f"Mensualité estimée : {mensualite:.2f} €")
+
+    st.markdown("---")
+
+    if st.button("🔄 Nouvelle simulation", use_container_width=True):
+        st.session_state.etape = 1
+        st.session_state.donnees = {}
+        st.rerun()
