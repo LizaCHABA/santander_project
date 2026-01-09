@@ -33,8 +33,12 @@ DEFAULT_TAUX_ANNUEL = 0.035  # 3.5%
 # -----------------------------
 # App init + load artifacts once
 # -----------------------------
+
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+
+# Autoriser toutes les origines (pour tester)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
  
 try:
     model = joblib.load(MODEL_PATH)
@@ -423,7 +427,6 @@ def predict():
 # Run
 # -----------------------------
 if __name__ == "__main__":
-    print("✅ API file:", __file__)
-    print("✅ Model path:", MODEL_PATH)
-    print("✅ Scaler path:", SCALER_PATH)
-    #app.run(host="0.0.0.0", port=5000, debug=True)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
